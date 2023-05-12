@@ -1,0 +1,58 @@
+[
+  {
+    "ParameterKey": "VpcBlock",
+    "ParameterValue": "10.0.0.0/16"
+  },
+  {
+    "ParameterKey": "PrivateSubnet01Block",
+    "ParameterValue": "10.0.1.0/24"
+  },
+  {
+    "ParameterKey": "PrivateSubnet02Block",
+    "ParameterValue": "10.0.2.0/24"
+  },
+  {
+    "ParameterKey": "PublicSubnet01Block",
+    "ParameterValue": "10.0.3.0/24"
+  },
+  {
+    "ParameterKey": "PublicSubnet02Block",
+    "ParameterValue": "10.0.4.0/24"
+  },
+  {
+    "ParameterKey": "ServiceName",
+    "ParameterValue": "MyService"
+  },
+  {
+    "ParameterKey": "ContainerPort",
+    "ParameterValue": "8000"
+  },
+  {
+    "ParameterKey": "LoadBalancerPort",
+    "ParameterValue": "80"
+  },
+  {
+    "ParameterKey": "Image",
+    "ParameterValue": "579104000213.dkr.ecr.ap-southeast-1.amazonaws.com/alex-repo:926f30de"
+  },
+  {
+    "ParameterKey": "MinContainers",
+    "ParameterValue": "1"
+  },
+  {
+    "ParameterKey": "MaxContainers",
+    "ParameterValue": "4"
+  },
+  {
+    "ParameterKey": "AutoScalingTargetValue",
+    "ParameterValue": "50"
+  },
+  {
+    "ParameterKey": "RepositoryName",
+    "ParameterValue": "alex-repo"
+  },
+  {
+    "ParameterKey": "RepositoryBranch",
+    "ParameterValue": "main"
+  }
+]

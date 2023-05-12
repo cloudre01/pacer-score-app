@@ -1,0 +1,197 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template to deploy a Django app with CI/CD pipeline on ECS
+
+Parameters:
+  VpcBlock:
+    Type: String
+    Default: 10.0.0.0/16
+    Description: VPC CIDR Range
+  PrivateSubnet01Block:
+    Type: String
+    Default: 10.0.1.0/24
+    Description: CidrBlock for PrivateSubnet 01 within the VPC.
+  PrivateSubnet02Block:
+    Type: String
+    Default: 10.0.2.0/24
+    Description: CidrBlock for PrivateSubnet 02 within the VPC.
+  PublicSubnet01Block:
+    Type: String
+    Default: 10.0.3.0/24
+    Description: CidrBlock for PublicSubnet 01 within the VPC.
+  PublicSubnet02Block:
+    Type: String
+    Default: 10.0.4.0/24
+    Description: CidrBlock for PublicSubnet 02 within the VPC.
+
+  ServiceName:
+    Type: String
+    Default: MyService
+  ContainerPort:
+    Type: Number
+    Default: 8000
+  LoadBalancerPort:
+    Type: Number
+    Default: 80
+  HealthCheckPath:
+    Type: String
+    Default: /
+  Image:
+    Type: String
+    Default: 123456789012.dkr.ecr.region.amazonaws.com/image:tag
+  MinContainers:
+    Type: Number
+    Default: 1
+  MaxContainers:
+    Type: Number
+    Default: 4
+  AutoScalingTargetValue:
+    Type: Number
+    Default: 50
+
+  RepositoryName:
+    Type: String
+    Default: MyRepository
+  RepositoryBranch:
+    Type: String
+    Default: main
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: VPC Network Configuration
+        Parameters:
+          - VpcBlock
+          - PrivateSubnet01Block
+          - PrivateSubnet02Block
+          - PublicSubnet01Block
+          - PublicSubnet02Block
+      - Label:
+          default: ECS Configuration
+        Parameters:
+          - ServiceName
+          - Image
+          - ContainerPort
+          - LoadBalancerPort
+          - HealthCheckPath
+          - MinContainers
+          - MaxContainers
+          - AutoScalingTargetValue
+      - Label:
+          default: CodePipeline Configuration
+        Parameters:
+          - RepositoryName
+          - RepositoryBranch
+    ParameterLabels:
+      VpcBlock:
+        default: VPC CIDR Range selection
+      ServiceName:
+        default: ECS Service Configuration
+      Image:
+        default: Docker Image on ECR
+      ContainerPort:
+        default: Container Port
+      LoadBalancerPort:
+        default: Load Balancer Port (80)
+      HealthCheckPath:
+        default: Health Check Path (/)
+      MinContainers:
+        default: Minimum Number of Containers
+      MaxContainers:
+        default: Maximum Number of Containers
+      AutoScalingTargetValue:
+        default: Auto Scaling Target Value
+      RepositoryName:
+        default: CodeCommit Repository Name
+      RepositoryBranch:
+        default: CodeCommit Repository Branch
+
+
+Resources:
+  # Create a VPC for the ECS cluster
+  VPCStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./vpc.yml
+      Parameters:
+        VpcBlock: !Ref VpcBlock
+        PrivateSubnet01Block: !Ref PrivateSubnet01Block
+        PrivateSubnet02Block: !Ref PrivateSubnet02Block
+        PublicSubnet01Block: !Ref PublicSubnet01Block
+        PublicSubnet02Block: !Ref PublicSubnet02Block
+
+  ECSStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./ecs.yml
+      Parameters:
+        VPC: !GetAtt VPCStack.Outputs.VpcId
+        PrivateSubnets: !Join [ ",", [ !GetAtt VPCStack.Outputs.PublicSubnet01Id, !GetAtt VPCStack.Outputs.PublicSubnet02Id ] ]
+        ServiceName: !Ref ServiceName
+        ContainerPort: !Ref ContainerPort
+        LoadBalancerPort: !Ref LoadBalancerPort
+        Image: !Ref Image
+        MinContainers: !Ref MinContainers
+        MaxContainers: !Ref MaxContainers
+        AutoScalingTargetValue: !Ref AutoScalingTargetValue
+        TaskRole: !GetAtt RoleStack.Outputs.TaskRoleArn
+        ExecutionRole: !GetAtt RoleStack.Outputs.ExecutionRoleArn
+        AutoScalingRoleArn: !GetAtt RoleStack.Outputs.AutoScalingRoleArn
+        ContainerSecurityGroup: !GetAtt SecurityGroupStack.Outputs.ECSHostSecurityGroup
+        TargetGroup: !GetAtt LoadBalancerStack.Outputs.TargetGroup
+        PostgresEndpoint: !GetAtt DatabaseStack.Outputs.PostgresEndpoint
+
+  LoadBalancerStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./load-balancers.yml
+      Parameters:
+        VPC: !GetAtt VPCStack.Outputs.VpcId
+        Subnets: !Join [ ",", [ !GetAtt VPCStack.Outputs.PublicSubnet01Id, !GetAtt VPCStack.Outputs.PublicSubnet02Id ] ]
+        SecurityGroup: !GetAtt SecurityGroupStack.Outputs.LoadBalancerSecurityGroup
+        ServiceName: !Ref ServiceName
+        HealthCheckPath: !Ref HealthCheckPath
+        LoadBalancerPort: !Ref LoadBalancerPort
+
+  SecurityGroupStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./security-groups.yml
+      Parameters:
+        VPC: !GetAtt VPCStack.Outputs.VpcId
+        LoadBalancerPort: !Ref LoadBalancerPort
+        ContainerPort: !Ref ContainerPort
+
+  RoleStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./roles.yml
+      Parameters:
+        ECSServiceName: !Ref ServiceName
+
+  PipelineStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./codepipeline.yml
+      Parameters:
+        BranchName: !Ref RepositoryBranch
+        RepositoryName: !Ref RepositoryName
+        ProjectName: !Join [ '-', [ !Ref ServiceName, 'CodeBuildProject' ] ]
+        ClusterName: !GetAtt ECSStack.Outputs.ClusterName
+        ServiceName: !Ref ServiceName
+        PostgresEndpoint: !GetAtt DatabaseStack.Outputs.PostgresEndpoint
+        VPC: !GetAtt VPCStack.Outputs.VpcId
+        CodeBuildSecurityGroup: !GetAtt SecurityGroupStack.Outputs.ECSHostSecurityGroup
+        CodeBuildSubnet01: !GetAtt VPCStack.Outputs.PrivateSubnet01Id
+        CodeBuildSubnet02: !GetAtt VPCStack.Outputs.PrivateSubnet02Id
+
+  DatabaseStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./database.yml
+      Parameters:
+        PrivateSubnets: !Join [ ",", [ !GetAtt VPCStack.Outputs.PrivateSubnet01Id, !GetAtt VPCStack.Outputs.PrivateSubnet02Id ] ]
+        DatabaseName: test_db
+        DatabaseUser: test_user
+        DatabasePassword: test_password
+        RdsSecurityGroup: !GetAtt SecurityGroupStack.Outputs.RdsSecurityGroup

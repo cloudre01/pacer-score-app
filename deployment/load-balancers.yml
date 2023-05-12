@@ -1,0 +1,85 @@
+Description: >
+  This template deploys an Application Load Balancer that exposes our various ECS services.
+  We create them in a seperate nested template, so it can be referenced by all of the other nested templates.
+
+Parameters:
+  VPC:
+    Type: AWS::EC2::VPC::Id
+    Description: Choose which VPC the Application Load Balancer should be deployed to
+  Subnets:
+    Description: Choose which subnets the Application Load Balancer should be deployed to
+    Type: List<AWS::EC2::Subnet::Id>
+  SecurityGroup:
+    Description: Select the Security Group to apply to the Application Load Balancer
+    Type: AWS::EC2::SecurityGroup::Id
+  ServiceName:
+    Description: The name of the service
+    Type: String
+    Default: MyService
+  HealthCheckPath:
+    Description: The path that the load balancer should use to check the health of the service
+    Type: String
+    Default: /
+  LoadBalancerPort:
+    Description: The port that the load balancer should listen on
+    Type: Number
+    Default: 80
+
+Resources:
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      LoadBalancerAttributes:
+        # this is the default, but is specified here in case it needs to be changed
+        - Key: idle_timeout.timeout_seconds
+          Value: 60
+      Name: !Join [ '', [ !Ref ServiceName, LoadBalancer ] ]
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref SecurityGroup
+      Subnets:
+        Ref: Subnets
+
+  LoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: !Ref LoadBalancerPort
+      Protocol: HTTP
+      DefaultActions:
+        - TargetGroupArn: !Ref TargetGroup
+          Type: forward
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 40
+      HealthCheckPath: !Ref HealthCheckPath
+      HealthCheckTimeoutSeconds: 20
+      UnhealthyThresholdCount: 2
+      HealthyThresholdCount: 2
+      Name: !Join [ '', [ !Ref ServiceName, TargetGroup ] ]
+      Port: !Ref LoadBalancerPort
+      Protocol: HTTP
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 60 # default is 300
+      TargetType: ip
+      VpcId: !Ref VPC
+
+Outputs:
+  LoadBalancer:
+    Description: A reference to the Application Load Balancer
+    Value: !Ref LoadBalancer
+
+  LoadBalancerUrl:
+    Description: The URL of the ALB
+    Value: !GetAtt LoadBalancer.DNSName
+
+  TargetGroup:
+    Description: A reference to the Target Group
+    Value: !Ref TargetGroup
+
+  Listener:
+    Description: A reference to a port 80 listener
+    Value: !Ref LoadBalancerListener

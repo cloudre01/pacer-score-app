@@ -1,0 +1,29 @@
+version: 0.2
+
+env:
+  shell: bash
+phases:
+  pre_build:
+    commands:
+      # Login to Amazon ECR public registry
+      - aws ecr-public get-login-password --region us-east-1 | docker login -u AWS --password-stdin public.ecr.aws
+      - ECR_MAIN_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com"
+
+      # Login to Amazon ECR private registry
+      - aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login -u AWS --password-stdin ${ECR_MAIN_URI}
+      - ECR_IMAGE_URI="${ECR_MAIN_URI}/${ECR_REPO_NAME}:${CODEBUILD_RESOLVED_SOURCE_VERSION:0:8}"
+  build:
+    commands:
+      - docker build -t score-app:latest .
+  post_build:
+    commands:
+      # Tag and pushes image to ECR
+      - docker tag score-app:latest ${ECR_IMAGE_URI}
+      - docker push ${ECR_IMAGE_URI}
+
+      # Generate image definitions file for codepipeline
+      - printf '[{"name":"%s","imageUri":"%s"}]' ${CONTAINER_NAME} ${ECR_IMAGE_URI} > imagedefinitions.json
+
+artifacts:
+    files:
+      - imagedefinitions.json

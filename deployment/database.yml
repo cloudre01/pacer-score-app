@@ -1,0 +1,69 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Database stack template
+
+Parameters:
+  DatabaseUser:
+    NoEcho: 'true'
+    Type: String
+    Description: "Database admin account name"
+    MinLength: '5'
+    MaxLength: '16'
+    Default: test_user
+  DatabasePassword:
+    NoEcho: 'true'
+    Type: String
+    Description: "Database admin account password"
+    MinLength: '6'
+    MaxLength: '41'
+    Default: test_password
+  DatabaseName:
+    Type: "String"
+    Description: "Database name"
+    MinLength: '1'
+    MaxLength: '30'
+    Default: test_db
+  PrivateSubnets:
+    Description: "Subnets to launch instances into"
+    Type: List<AWS::EC2::Subnet::Id>
+  RdsSecurityGroup:
+    Description: "Select the Security Group to use for the ELB"
+    Type: AWS::EC2::SecurityGroup::Id
+
+Resources:
+  RDSPostgresDB:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      DBSubnetGroupName: !Ref "DbSubnetGroup"
+      BackupRetentionPeriod: 0 # disables automated backups
+      DeletionProtection: false
+      Engine: postgres
+      EngineVersion: '12.7'
+      DBInstanceClass: db.t2.micro
+      AllocatedStorage: '5'
+      DBName: !Ref "DatabaseName"
+      MasterUsername: !Ref "DatabaseUser"
+      MasterUserPassword: !Ref "DatabasePassword"
+      Port: '5432'
+      MultiAZ: false
+      StorageType: gp2
+      StorageEncrypted: false
+      VPCSecurityGroups: [ !Ref RdsSecurityGroup ]
+  DbSubnetGroup:
+    Type: "AWS::RDS::DBSubnetGroup"
+    Properties:
+      DBSubnetGroupDescription: "RDS DB subnet group"
+      SubnetIds:
+        Ref: PrivateSubnets
+  DatabaseEndpoint:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /score-app/database-endpoint
+      Type: String
+      Value: !GetAtt RDSPostgresDB.Endpoint.Address
+      Description: "Database endpoint"
+
+Outputs:
+  PostgresEndpoint:
+    Value: !GetAtt RDSPostgresDB.Endpoint.Address
